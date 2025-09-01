@@ -1,68 +1,88 @@
-import torch, torchvision
-from torchvision import datasets, transforms
-from torch import nn, optim
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import matplotlib.pyplot as plt
+import os
 
-# Device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# === 1. Konfigurasi Dataset ===
+train_dir = r"train"  # ganti dengan path folder train Anda
+test_dir  = r"test"   # ganti dengan path folder test Anda
+img_size = (224, 224)
+batch_size = 32
 
-# 1. Data augmentasi dan loader
-transform = transforms.Compose([
-    transforms.Resize((64,64)),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomRotation(15),
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))  # untuk RGB
+# Load dataset awal
+train_ds_raw = keras.utils.image_dataset_from_directory(
+    train_dir, image_size=img_size, batch_size=batch_size
+)
+test_ds_raw = keras.utils.image_dataset_from_directory(
+    test_dir, image_size=img_size, batch_size=batch_size
+)
+
+# Simpan class_names sebelum map & prefetch
+class_names = train_ds_raw.class_names
+num_classes = len(class_names)
+print("Kelas:", class_names)
+
+# Normalisasi data dan prefetch
+normalization_layer = layers.Rescaling(1./255)
+train_ds = train_ds_raw.map(lambda x, y: (normalization_layer(x), y)).prefetch(tf.data.AUTOTUNE)
+test_ds = test_ds_raw.map(lambda x, y: (normalization_layer(x), y)).prefetch(tf.data.AUTOTUNE)
+
+# === 2. Data Augmentation ===
+data_augmentation = keras.Sequential([
+    layers.RandomFlip("horizontal"),
+    layers.RandomRotation(0.1),
+    layers.RandomZoom(0.1),
 ])
 
-train_ds = datasets.ImageFolder(r".\train", transform=transform)
-test_ds  = datasets.ImageFolder(r".\test", transform=transform)
+# === 3. Model Transfer Learning (MobileNetV2) ===
+base_model = keras.applications.MobileNetV2(
+    input_shape=img_size + (3,),
+    include_top=False,
+    weights='imagenet'
+)
+base_model.trainable = False  # freeze layer awal
 
-train_loader = torch.utils.data.DataLoader(train_ds, batch_size=32, shuffle=True)
-test_loader  = torch.utils.data.DataLoader(test_ds, batch_size=32)
+model = keras.Sequential([
+    data_augmentation,
+    base_model,
+    layers.GlobalAveragePooling2D(),
+    layers.Dropout(0.3),
+    layers.Dense(num_classes, activation='softmax')  # pakai num_classes
+])
 
-# 2. Model CNN kecil
-class SimpleCNN(nn.Module):
-    def __init__(self, num_classes):
-        super().__init__()
-        self.features = nn.Sequential(
-            nn.Conv2d(3,32,3,1,1), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32,64,3,1,1), nn.ReLU(), nn.MaxPool2d(2)
-        )
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(64*16*16, 128), nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, num_classes)
-        )
-    def forward(self, x):
-        return self.classifier(self.features(x))
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
 
-num_classes = len(train_ds.classes)
-model = SimpleCNN(num_classes).to(device)
+# === 4. Training Model (Transfer Learning) ===
+history = model.fit(
+    train_ds,
+    validation_data=test_ds,
+    epochs=15
+)
 
-# 3. Loss dan optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+# === 5. Fine Tuning (Optional) ===
+base_model.trainable = True
+model.compile(optimizer=keras.optimizers.Adam(1e-5),
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+model.fit(train_ds, validation_data=test_ds, epochs=5)
 
-# 4. Training loop
-for epoch in range(10):
-    model.train()
-    for imgs, labels in train_loader:
-        imgs, labels = imgs.to(device), labels.to(device)
-        outputs = model(imgs)
-        loss = criterion(outputs, labels)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+# === 6. Evaluasi ===
+loss, acc = model.evaluate(test_ds)
+print(f"Akurasi Model: {acc*100:.2f}%")
 
-    # Evaluasi pada test set
-    model.eval()
-    total, correct = 0, 0
-    with torch.no_grad():
-        for imgs, labels in test_loader:
-            imgs, labels = imgs.to(device), labels.to(device)
-            preds = model(imgs).argmax(1)
-            total += labels.size(0)
-            correct += (preds == labels).sum().item()
-    print(f"Epoch {epoch+1} — Test Accuracy: {correct/total:.3f}")
+# === 7. Simpan Model ===
+model.save("sports_balls_classifier.h5")
+print("Model tersimpan sebagai sports_balls_classifier.h5")
 
+# === 8. Plot Akurasi ===
+plt.figure(figsize=(8, 5))
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Test Accuracy')
+plt.xlabel('Epoch')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.title('Training & Validation Accuracy')
+plt.show()
