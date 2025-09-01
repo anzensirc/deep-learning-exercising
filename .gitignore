@@ -1,0 +1,17 @@
+# Abaikan folder dataset
+train/
+test/
+
+# Abaikan file checkpoint model
+*.pth
+*.pt
+*.h5
+
+# Abaikan file cache & temporary
+__pycache__/
+*.pyc
+.DS_Store
+
+# Abaikan file log atau output training
+logs/
+outputs/
