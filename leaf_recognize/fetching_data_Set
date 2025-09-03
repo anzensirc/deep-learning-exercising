@@ -1,0 +1,18 @@
+import kagglehub
+import shutil
+import os
+
+# Download ke cache bawaan
+path = kagglehub.dataset_download("emmarex/plantdisease")
+
+# Tentukan folder tujuan
+target_path = r"D:\my_datasets\plantdisease"
+
+# Kalau folder tujuan sudah ada, hapus dulu biar tidak error
+if os.path.exists(target_path):
+    shutil.rmtree(target_path)
+
+# Pindahkan dari cache ke folder tujuan
+shutil.move(path, target_path)
+
+print("Dataset sudah dipindahkan ke:", target_path)
