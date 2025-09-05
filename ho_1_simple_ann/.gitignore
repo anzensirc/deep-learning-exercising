@@ -1,0 +1,28 @@
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+/assets/
+# Virtual environment
+venv/
+.env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Data files besar
+*.csv
+*.h5
+*.npz
+*.pkl
+
+# OS-specific
+.DS_Store
+Thumbs.db
